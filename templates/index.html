@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Deteksi Kertas Web App</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+  <style>
+    body { text-align: center; }
+    video, canvas { border: 1px solid #000; margin: 10px; }
+    .view { display: inline-block; }
+  </style>
+</head>
+<body>
+  <h1>Deteksi Kertas</h1>
+
+  <!-- Tampilan 1: Kamera (Raw Video) -->
+  <div class="view">
+    <h2>Kamera (Raw)</h2>
+    <video id="video" width="640" height="480" autoplay></video>
+  </div>
+
+  <!-- Tampilan 2: Proses Pencocokkan -->
+  <div class="view">
+    <h2>Proses Pencocokkan</h2>
+    <canvas id="canvas_process" width="640" height="480"></canvas>
+  </div>
+
+  <!-- Tampilan 3: Gambar yang Dicocokkan -->
+  <div class="view">
+    <h2>Gambar yang Dicocokkan</h2>
+    <canvas id="canvas_final" width="640" height="480"></canvas>
+  </div>
+  
+  <script>
+    const video = document.getElementById('video');
+    const canvasProcess = document.getElementById('canvas_process');
+    const contextProcess = canvasProcess.getContext('2d');
+    const canvasFinal = document.getElementById('canvas_final');
+    const contextFinal = canvasFinal.getContext('2d');
+    const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+
+    // Minta akses ke kamera menggunakan getUserMedia
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(function(stream) {
+        video.srcObject = stream;
+        video.play();
+      })
+      .catch(function(err) {
+        console.error("Error: " + err);
+      });
+
+    // Setiap 100ms, kirim frame ke server
+    setInterval(function() {
+      // Buat canvas offscreen untuk menangkap frame dari video
+      let offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = video.videoWidth;
+      offscreenCanvas.height = video.videoHeight;
+      let offscreenContext = offscreenCanvas.getContext('2d');
+      offscreenContext.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+      const dataURL = offscreenCanvas.toDataURL('image/jpeg');
+      socket.emit('input_frame', dataURL);
+    }, 100);
+
+    // Terima gambar hasil proses pencocokkan dari server
+    socket.on('output_process', function(data) {
+      const imgProcess = new Image();
+      imgProcess.onload = function() {
+        contextProcess.drawImage(imgProcess, 0, 0, canvasProcess.width, canvasProcess.height);
+      };
+      imgProcess.src = 'data:image/jpeg;base64,' + data;
+    });
+
+    // Terima gambar akhir (matched image) dari server
+    socket.on('output_final', function(data) {
+      const imgFinal = new Image();
+      imgFinal.onload = function() {
+        contextFinal.drawImage(imgFinal, 0, 0, canvasFinal.width, canvasFinal.height);
+      };
+      imgFinal.src = 'data:image/jpeg;base64,' + data;
+    });
+  </script>
+</body>
+</html>
